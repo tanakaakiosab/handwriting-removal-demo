@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <title>OCR連携手書き文字除去デモ</title>
   <style>
-    body { 
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-      padding: 20px; 
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
       margin: 0;
@@ -71,15 +71,15 @@
       font-weight: bold;
       color: #495057;
     }
-    canvas { 
-      border: 2px solid #ddd; 
-      max-width: 100%; 
-      height: auto; 
+    canvas {
+      border: 2px solid #ddd;
+      max-width: 100%;
+      height: auto;
       margin: 10px 0;
       border-radius: 8px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    #controls { 
+    #controls {
       margin-bottom: 20px;
       text-align: center;
       background: #f8f9fa;
@@ -404,9 +404,13 @@
         const canvas = document.getElementById('canvasInput');
         const language = document.getElementById('languageSelect').value;
 
-        // 言語を変更する場合は再初期化
+        // Tesseract.js v4の場合、reinitializeは存在しないため、
+        // 既存のワーカーを終了し、新しいワーカーを目的の言語で作成します。
         if (worker) {
-          await worker.reinitialize(language);
+            await worker.terminate(); // 古いワーカーを終了
+            worker = await Tesseract.createWorker(); // 新しいワーカーを作成
+            await worker.loadLanguage(language);
+            await worker.initialize(language);
         }
 
         updateProgress(10, 'OCR解析開始...');
