@@ -169,25 +169,53 @@
         const hiddenCanvas = document.getElementById('hiddenCanvas');
         const thresholdValue = parseInt(document.getElementById('thresholdSlider').value);
 
+        console.log('画像処理開始...');
+
         // 元画像を読み込み
         const src = cv.imread(canvasInput);
+        console.log('元画像サイズ:', src.rows, 'x', src.cols);
+
         const gray = new cv.Mat();
         const mask = new cv.Mat();
+        const mask3ch = new cv.Mat();
         const dst = new cv.Mat();
 
         // グレースケール変換
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        if (src.channels() === 4) {
+          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        } else if (src.channels() === 3) {
+          cv.cvtColor(src, gray, cv.COLOR_RGB2GRAY);
+        } else {
+          gray.copyFrom(src);
+        }
+        console.log('グレースケール変換完了');
         
         // 二値化でマスクを作成（文字部分を白、背景を黒に）
         cv.threshold(gray, mask, thresholdValue, 255, cv.THRESH_BINARY_INV);
+        console.log('マスク作成完了');
 
         // マスク画像を表示
         maskCanvas.width = mask.cols;
         maskCanvas.height = mask.rows;
         cv.imshow(maskCanvas, mask);
 
+        // マスクを3チャンネルに変換（inpaintに必要）
+        cv.cvtColor(mask, mask3ch, cv.COLOR_GRAY2RGB);
+
+        // 元画像も3チャンネルに統一
+        const src3ch = new cv.Mat();
+        if (src.channels() === 4) {
+          cv.cvtColor(src, src3ch, cv.COLOR_RGBA2RGB);
+        } else if (src.channels() === 1) {
+          cv.cvtColor(src, src3ch, cv.COLOR_GRAY2RGB);
+        } else {
+          src.copyTo(src3ch);
+        }
+
+        console.log('インペインティング実行中...');
         // インペインティング（文字除去）
-        cv.inpaint(src, mask, dst, 5, cv.INPAINT_NS);
+        cv.inpaint(src3ch, mask, dst, 3, cv.INPAINT_TELEA);
+        console.log('インペインティング完了');
 
         // 結果を表示用canvasに描画
         canvasOutput.width = dst.cols;
@@ -203,11 +231,16 @@
         document.getElementById('saveBtn').disabled = false;
 
         // メモリ解放
-        [src, gray, mask, dst].forEach(mat => mat.delete());
+        [src, gray, mask, mask3ch, src3ch, dst].forEach(mat => {
+          if (mat && !mat.isDeleted()) {
+            mat.delete();
+          }
+        });
 
         console.log('画像処理完了');
       } catch (error) {
         console.error('画像処理エラー:', error);
+        console.error('エラー詳細:', error.stack);
         alert('画像処理中にエラーが発生しました: ' + error.message);
       }
     }
