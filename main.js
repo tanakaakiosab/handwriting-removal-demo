@@ -1,60 +1,35 @@
-function onOpenCvReady() {
-  console.log('OpenCV.js 動作準備完了');
-  const input = document.getElementById('inputImage');
-  const saveBtn = document.getElementById('saveBtn');
-  const canvas = document.getElementById('canvasOutput');
-  const ctx = canvas.getContext('2d');
+function processImage(canvas) {
+  const src = cv.imread(canvas);
+  const gray = new cv.Mat();
+  const mask = new cv.Mat();
+  const dst = new cv.Mat();
 
-  input.addEventListener('change', onFileChange);
-  saveBtn.addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = 'result.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  });
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.threshold(gray, mask, 120, 255, cv.THRESH_BINARY_INV);
 
-  function onFileChange(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const img = new Image();
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        processImage(canvas);
-      };
-      img.src = evt.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
+  const maskCanvas = document.getElementById('maskCanvas');
+  maskCanvas.width = mask.cols;
+  maskCanvas.height = mask.rows;
+  cv.imshow(maskCanvas, mask);
 
-  function processImage(canvas) {
-    const src = cv.imread(canvas);
-    const gray = new cv.Mat();
-    const mask = new cv.Mat();
-    const dst = new cv.Mat();
+  cv.inpaint(src, mask, dst, 5, cv.INPAINT_NS);
 
-    // グレースケール変換
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  // ここでcanvasOutputに表示
+  cv.imshow(canvas, dst);
 
-    // 二値化（しきい値120、文字部分を黒に反転）
-    cv.threshold(gray, mask, 120, 255, cv.THRESH_BINARY_INV);
+  // さらに非表示canvasに描画（保存用）
+  const hiddenCanvas = document.getElementById('hiddenCanvas');
+  hiddenCanvas.width = dst.cols;
+  hiddenCanvas.height = dst.rows;
+  cv.imshow(hiddenCanvas, dst);
 
-    // マスクを画面に表示（文字部分が白く抽出されているはず）
-    const maskCanvas = document.getElementById('maskCanvas');
-    maskCanvas.width = mask.cols;
-    maskCanvas.height = mask.rows;
-    cv.imshow(maskCanvas, mask);
-
-    // インペイント（消去）処理
-    cv.inpaint(src, mask, dst, 5, cv.INPAINT_NS);
-
-    // 結果表示
-    cv.imshow(canvas, dst);
-
-    // メモリ解放
-    [src, gray, mask, dst].forEach(mat => mat.delete());
-  }
+  [src, gray, mask, dst].forEach(mat => mat.delete());
 }
+
+saveBtn.addEventListener('click', () => {
+  const hiddenCanvas = document.getElementById('hiddenCanvas');
+  const link = document.createElement('a');
+  link.download = 'result.png';
+  link.href = hiddenCanvas.toDataURL('image/png');
+  link.click();
+});
