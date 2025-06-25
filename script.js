@@ -3,16 +3,30 @@ let isTesseractReady = false;
 let currentImage = null;
 let ocrResults = null;
 let worker = null;
+let currentWorkerLanguage = null; // 現在ワーカーが初期化されている言語を追跡する変数
 
 // Tesseract.js初期化
 async function initTesseract() {
   try {
-    worker = await Tesseract.createWorker();
+    // 最初のワーカーはデフォルトの言語で作成 (後でOCR実行時に言語切り替え)
+    worker = await Tesseract.createWorker({
+        logger: m => { // ロガーはワーカー作成時に設定
+            if (m.status === 'loading tesseract core' || m.status === 'initializing tesseract') {
+                updateProgress(m.progress * 10, `Tesseract.jsコアを読み込み中...`);
+            } else if (m.status === 'loading lang data') {
+                updateProgress(m.progress * 10, `言語データをダウンロード中...`);
+            }
+        }
+    });
+    // 初期言語設定（ここではデフォルトでjpn+eng）
     await worker.loadLanguage('jpn+eng');
     await worker.initialize('jpn+eng');
+    currentWorkerLanguage = 'jpn+eng'; // 初期言語を記録
+    
     isTesseractReady = true;
     updateStatus();
     console.log('Tesseract.js初期化完了');
+    updateProgress(100, 'Tesseract.js初期化完了'); // 初期化完了時の進捗表示
   } catch (error) {
     console.error('Tesseract.js初期化エラー:', error);
     document.getElementById('status').textContent = 'Tesseract.js初期化に失敗しました';
@@ -31,7 +45,7 @@ function updateStatus() {
   if (isOpenCVReady && isTesseractReady) {
     status.textContent = '✅ 準備完了！画像を選択してください。';
     status.className = 'status ready';
-
+    
     // 全ての入力要素を有効化
     document.querySelectorAll('input, button, select').forEach(el => {
       if (!['processBtn', 'saveBtn'].includes(el.id)) {
@@ -50,14 +64,16 @@ function updateProgress(progress, text) {
   const progressSection = document.getElementById('progressSection');
   const progressFill = document.getElementById('progressFill');
   const progressText = document.getElementById('progressText');
-
+  
   progressSection.style.display = 'block';
   progressFill.style.width = `${progress}%`;
   progressText.textContent = text;
-
-  if (progress >= 100) {
+  
+  // OCR解析完了後、一定時間でプログレスバーを非表示にする
+  if (progress >= 100 && text.includes('完了')) {
     setTimeout(() => {
       progressSection.style.display = 'none';
+      progressFill.style.width = '0%'; // 次の処理のためにリセット
     }, 1000);
   }
 }
@@ -74,27 +90,34 @@ async function performOCR() {
     status.className = 'status processing';
 
     const canvas = document.getElementById('canvasInput');
-    const language = document.getElementById('languageSelect').value;
+    const selectedLanguage = document.getElementById('languageSelect').value;
 
-    // Tesseract.js v4の場合、reinitializeは存在しないため、
-    // 既存のワーカーを終了し、新しいワーカーを目的の言語で作成します。
-    if (worker) {
-        await worker.terminate(); // 古いワーカーを終了
-        worker = await Tesseract.createWorker(); // 新しいワーカーを作成
-        await worker.loadLanguage(language);
-        await worker.initialize(language);
+    // 選択された言語が現在のワーカーの言語と異なる場合のみワーカーを再初期化
+    if (currentWorkerLanguage !== selectedLanguage) {
+        if (worker) {
+            await worker.terminate(); // 古いワーカーを終了
+            console.log('Tesseract worker terminated for language change.');
+        }
+        worker = await Tesseract.createWorker({
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    const progress = 10 + (m.progress * 70);
+                    updateProgress(progress, `OCR解析中... ${Math.round(m.progress * 100)}%`);
+                } else if (m.status === 'loading lang data') {
+                    updateProgress(m.progress * 10, `言語データをダウンロード中... ${Math.round(m.progress * 100)}%`);
+                }
+            }
+        });
+        await worker.loadLanguage(selectedLanguage);
+        await worker.initialize(selectedLanguage);
+        currentWorkerLanguage = selectedLanguage; // 新しい言語を記録
+        console.log(`Tesseract worker re-initialized with language: ${selectedLanguage}`);
     }
 
     updateProgress(10, 'OCR解析開始...');
 
-    const { data } = await worker.recognize(canvas, {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          const progress = 10 + (m.progress * 70);
-          updateProgress(progress, `OCR解析中... ${Math.round(m.progress * 100)}%`);
-        }
-      }
-    });
+    // ロガーはworker作成時に設定済みのため、recognize時には渡さない
+    const { data } = await worker.recognize(canvas);
 
     updateProgress(80, 'OCR結果を処理中...');
 
@@ -111,7 +134,7 @@ async function performOCR() {
     console.log('OCR解析完了:', data);
   } catch (error) {
     console.error('OCR解析エラー:', error);
-    alert('OCR解析中にエラーが発生しました: ' + error.message);
+    alert('OCR解析中にエラーが発生しました: ' + error.message + '\n詳細をコンソールで確認してください。');
     document.getElementById('status').textContent = '❌ OCR解析でエラーが発生しました';
     document.getElementById('status').className = 'status loading';
   }
@@ -120,7 +143,7 @@ async function performOCR() {
 function displayOCRResults(data) {
   const resultsDiv = document.getElementById('ocrResults');
   const textDiv = document.getElementById('ocrText');
-
+  
   resultsDiv.style.display = 'block';
   textDiv.innerHTML = '';
 
@@ -128,7 +151,7 @@ function displayOCRResults(data) {
     const confidence = Math.round(word.confidence);
     const div = document.createElement('div');
     div.className = 'text-item';
-
+    
     if (confidence < 70) {
       div.className += ' low-confidence';
     }
@@ -148,23 +171,23 @@ function visualizeOCRResults(data) {
   const canvas = document.getElementById('ocrCanvas');
   const inputCanvas = document.getElementById('canvasInput');
   const ctx = canvas.getContext('2d');
-
+  
   canvas.width = inputCanvas.width;
   canvas.height = inputCanvas.height;
-
+  
   // 元画像をコピー
   ctx.drawImage(inputCanvas, 0, 0);
-
+  
   const confidenceThreshold = parseInt(document.getElementById('confidenceThreshold').value);
-
+  
   data.words.forEach(word => {
     const { bbox, confidence } = word;
     const { x0, y0, x1, y1 } = bbox;
-
+    
     ctx.strokeWidth = 2;
     ctx.fillStyle = confidence >= confidenceThreshold ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 0, 0, 0.3)';
     ctx.strokeStyle = confidence >= confidenceThreshold ? 'green' : 'red';
-
+    
     ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
     ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
   });
@@ -235,7 +258,7 @@ function processImage() {
 
     // 手書きマスクを作成
     const mask = createHandwritingMask();
-
+    
     updateProgress(30, 'マスク表示中...');
 
     // マスクを表示
@@ -248,7 +271,7 @@ function processImage() {
     // 元画像を読み込み
     const src = cv.imread(canvasInput);
     const src3ch = new cv.Mat();
-
+    
     // 3チャンネルに変換
     if (src.channels() === 4) {
       cv.cvtColor(src, src3ch, cv.COLOR_RGBA2RGB);
@@ -302,11 +325,12 @@ document.addEventListener('DOMContentLoaded', function() {
   const ocrBtn = document.getElementById('ocrBtn');
   const processBtn = document.getElementById('processBtn');
   const saveBtn = document.getElementById('saveBtn');
+  const languageSelect = document.getElementById('languageSelect'); // 言語選択要素を取得
 
   // パラメータスライダーの更新
   document.getElementById('confidenceThreshold').addEventListener('input', function() {
     document.getElementById('confidenceValue').textContent = this.value + '%';
-    if (ocrResults) visualizeOCRResults(ocrResults);
+    if (ocrResults) visualizeOCRResults(ocrResults); // OCR結果がある場合のみ可視化を更新
   });
 
   document.getElementById('expansionSize').addEventListener('input', function() {
@@ -331,19 +355,25 @@ document.addEventListener('DOMContentLoaded', function() {
       img.onload = function() {
         const canvasInput = document.getElementById('canvasInput');
         const ctx = canvasInput.getContext('2d');
-
+        
         canvasInput.width = img.width;
         canvasInput.height = img.height;
         ctx.drawImage(img, 0, 0);
-
+        
         currentImage = img;
         ocrBtn.disabled = false;
-
+        
         // リセット
         ocrResults = null;
         processBtn.disabled = true;
         saveBtn.disabled = true;
         document.getElementById('ocrResults').style.display = 'none';
+        
+        // OCR検出結果とマスクのキャンバスをクリア
+        document.getElementById('ocrCanvas').getContext('2d').clearRect(0, 0, document.getElementById('ocrCanvas').width, document.getElementById('ocrCanvas').height);
+        document.getElementById('maskCanvas').getContext('2d').clearRect(0, 0, document.getElementById('maskCanvas').width, document.getElementById('maskCanvas').height);
+        document.getElementById('canvasOutput').getContext('2d').clearRect(0, 0, document.getElementById('canvasOutput').width, document.getElementById('canvasOutput').height);
+
       };
       img.src = event.target.result;
     };
