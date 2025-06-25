@@ -36,11 +36,25 @@ function onOpenCvReady() {
     const mask = new cv.Mat();
     const dst = new cv.Mat();
 
+    // グレースケール変換
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.threshold(gray, mask, 180, 255, cv.THRESH_BINARY_INV);
-    cv.inpaint(src, mask, dst, 3, cv.INPAINT_TELEA);
 
+    // 二値化（しきい値120、文字部分を黒に反転）
+    cv.threshold(gray, mask, 120, 255, cv.THRESH_BINARY_INV);
+
+    // マスクを画面に表示（文字部分が白く抽出されているはず）
+    const maskCanvas = document.getElementById('maskCanvas');
+    maskCanvas.width = mask.cols;
+    maskCanvas.height = mask.rows;
+    cv.imshow(maskCanvas, mask);
+
+    // インペイント（消去）処理
+    cv.inpaint(src, mask, dst, 5, cv.INPAINT_NS);
+
+    // 結果表示
     cv.imshow(canvas, dst);
+
+    // メモリ解放
     [src, gray, mask, dst].forEach(mat => mat.delete());
   }
 }
