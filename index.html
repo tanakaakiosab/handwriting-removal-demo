@@ -4,25 +4,288 @@
   <meta charset="utf-8" />
   <title>手書き文字除去デモ</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    canvas { border: 1px solid #ccc; max-width: 100%; height: auto; margin-top: 10px; }
-    #controls { margin-bottom: 10px; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      padding: 20px; 
+      background-color: #f5f5f5;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    canvas { 
+      border: 2px solid #ddd; 
+      max-width: 100%; 
+      height: auto; 
+      margin: 10px 0;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #controls { 
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    input[type="file"] {
+      margin-right: 10px;
+      padding: 8px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      background: white;
+    }
+    button {
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .status {
+      text-align: center;
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    .status.loading {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    .status.ready {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .canvas-section {
+      margin: 20px 0;
+    }
+    .canvas-section h3 {
+      color: #555;
+      margin-bottom: 10px;
+    }
+    .threshold-control {
+      margin: 10px 0;
+      text-align: center;
+    }
+    .threshold-control label {
+      display: inline-block;
+      margin-right: 10px;
+      font-weight: bold;
+    }
+    .threshold-control input[type="range"] {
+      width: 200px;
+      margin: 0 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>手書き文字除去デモ</h1>
-  <div id="controls">
-    <input type="file" id="inputImage" accept="image/*" />
-    <button id="saveBtn">結果を保存</button>
+  <div class="container">
+    <h1>🖋️ 手書き文字除去デモ</h1>
+    
+    <div id="status" class="status loading">OpenCV.js を読み込み中...</div>
+    
+    <div id="controls">
+      <input type="file" id="inputImage" accept="image/*" disabled />
+      <button id="processBtn" disabled>画像を処理</button>
+      <button id="saveBtn" disabled>結果を保存</button>
+    </div>
+
+    <div class="threshold-control">
+      <label for="thresholdSlider">閾値調整:</label>
+      <input type="range" id="thresholdSlider" min="80" max="180" value="120" disabled />
+      <span id="thresholdValue">120</span>
+    </div>
+
+    <div class="canvas-section">
+      <h3>📷 元画像</h3>
+      <canvas id="canvasInput"></canvas>
+    </div>
+
+    <div class="canvas-section">
+      <h3>🎯 マスク画像（検出された文字部分）</h3>
+      <canvas id="maskCanvas"></canvas>
+    </div>
+
+    <div class="canvas-section">
+      <h3>✨ 処理結果（文字除去後）</h3>
+      <canvas id="canvasOutput"></canvas>
+    </div>
+
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
   </div>
-  <canvas id="canvasOutput"></canvas>
-  <div>
-    <p>【マスク画像（文字部分の抽出結果）】</p>
-    <canvas id="maskCanvas"></canvas>
-  </div>
-<canvas id="hiddenCanvas" style="display:none;"></canvas>
 
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
-  <script src="main.js"></script>
+  
+  <script>
+    let isOpenCVReady = false;
+    let currentImage = null;
+
+    // OpenCV.js初期化完了時の処理
+    function onOpenCvReady() {
+      isOpenCVReady = true;
+      const status = document.getElementById('status');
+      const inputImage = document.getElementById('inputImage');
+      const processBtn = document.getElementById('processBtn');
+      const thresholdSlider = document.getElementById('thresholdSlider');
+      
+      status.textContent = '✅ OpenCV.js の読み込み完了！画像を選択してください。';
+      status.className = 'status ready';
+      
+      inputImage.disabled = false;
+      thresholdSlider.disabled = false;
+      
+      console.log('OpenCV.js is ready');
+    }
+
+    // 画像処理関数
+    function processImage() {
+      if (!isOpenCVReady || !currentImage) {
+        alert('OpenCV.jsが読み込まれていないか、画像が選択されていません。');
+        return;
+      }
+
+      try {
+        const canvasInput = document.getElementById('canvasInput');
+        const canvasOutput = document.getElementById('canvasOutput');
+        const maskCanvas = document.getElementById('maskCanvas');
+        const hiddenCanvas = document.getElementById('hiddenCanvas');
+        const thresholdValue = parseInt(document.getElementById('thresholdSlider').value);
+
+        // 元画像を読み込み
+        const src = cv.imread(canvasInput);
+        const gray = new cv.Mat();
+        const mask = new cv.Mat();
+        const dst = new cv.Mat();
+
+        // グレースケール変換
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        
+        // 二値化でマスクを作成（文字部分を白、背景を黒に）
+        cv.threshold(gray, mask, thresholdValue, 255, cv.THRESH_BINARY_INV);
+
+        // マスク画像を表示
+        maskCanvas.width = mask.cols;
+        maskCanvas.height = mask.rows;
+        cv.imshow(maskCanvas, mask);
+
+        // インペインティング（文字除去）
+        cv.inpaint(src, mask, dst, 5, cv.INPAINT_NS);
+
+        // 結果を表示用canvasに描画
+        canvasOutput.width = dst.cols;
+        canvasOutput.height = dst.rows;
+        cv.imshow(canvasOutput, dst);
+
+        // 保存用の非表示canvasに描画
+        hiddenCanvas.width = dst.cols;
+        hiddenCanvas.height = dst.rows;
+        cv.imshow(hiddenCanvas, dst);
+
+        // 保存ボタンを有効化
+        document.getElementById('saveBtn').disabled = false;
+
+        // メモリ解放
+        [src, gray, mask, dst].forEach(mat => mat.delete());
+
+        console.log('画像処理完了');
+      } catch (error) {
+        console.error('画像処理エラー:', error);
+        alert('画像処理中にエラーが発生しました: ' + error.message);
+      }
+    }
+
+    // ページ読み込み完了後の初期化
+    document.addEventListener('DOMContentLoaded', function() {
+      const inputImage = document.getElementById('inputImage');
+      const processBtn = document.getElementById('processBtn');
+      const saveBtn = document.getElementById('saveBtn');
+      const thresholdSlider = document.getElementById('thresholdSlider');
+      const thresholdValue = document.getElementById('thresholdValue');
+
+      // ファイル選択時の処理
+      inputImage.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          const img = new Image();
+          img.onload = function() {
+            const canvasInput = document.getElementById('canvasInput');
+            const ctx = canvasInput.getContext('2d');
+            
+            // キャンバスサイズを画像に合わせる
+            canvasInput.width = img.width;
+            canvasInput.height = img.height;
+            
+            // 画像を描画
+            ctx.drawImage(img, 0, 0);
+            
+            currentImage = img;
+            processBtn.disabled = false;
+            
+            console.log('画像読み込み完了:', img.width, 'x', img.height);
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // 処理ボタンクリック時
+      processBtn.addEventListener('click', processImage);
+
+      // 閾値スライダー変更時
+      thresholdSlider.addEventListener('input', function() {
+        thresholdValue.textContent = this.value;
+        // リアルタイム処理（オプション）
+        if (currentImage && isOpenCVReady) {
+          processImage();
+        }
+      });
+
+      // 保存ボタンクリック時
+      saveBtn.addEventListener('click', function() {
+        const hiddenCanvas = document.getElementById('hiddenCanvas');
+        if (hiddenCanvas.width === 0 || hiddenCanvas.height === 0) {
+          alert('保存する画像がありません。まず画像を処理してください。');
+          return;
+        }
+
+        try {
+          const link = document.createElement('a');
+          link.download = 'handwriting_removed_' + new Date().getTime() + '.png';
+          link.href = hiddenCanvas.toDataURL('image/png');
+          link.click();
+          console.log('画像保存完了');
+        } catch (error) {
+          console.error('保存エラー:', error);
+          alert('画像の保存中にエラーが発生しました。');
+        }
+      });
+    });
+
+    // エラーハンドリング
+    window.addEventListener('error', function(e) {
+      console.error('エラー:', e.error);
+    });
+  </script>
 </body>
 </html>
