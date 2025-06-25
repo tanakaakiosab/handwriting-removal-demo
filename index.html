@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>OCR連携手書き文字除去デモ</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2.5em;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .method-info {
+      background: linear-gradient(45deg, #e3f2fd, #f3e5f5);
+      padding: 25px;
+      border-radius: 12px;
+      margin-bottom: 25px;
+      border-left: 5px solid #2196f3;
+    }
+    .method-info h3 {
+      margin-top: 0;
+      color: #1976d2;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .method-info ul {
+      margin-bottom: 0;
+      color: #424242;
+    }
+    .progress-section {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background: #e9ecef;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-text {
+      text-align: center;
+      font-weight: bold;
+      color: #495057;
+    }
+    canvas {
+      border: 2px solid #ddd;
+      max-width: 100%;
+      height: auto;
+      margin: 10px 0;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    #controls {
+      margin-bottom: 20px;
+      text-align: center;
+      background: #f8f9fa;
+      padding: 25px;
+      border-radius: 12px;
+    }
+    input[type="file"] {
+      margin-right: 15px;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      background: white;
+      font-size: 14px;
+    }
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.3s;
+      margin: 5px;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .status {
+      text-align: center;
+      margin: 15px 0;
+      padding: 15px;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+    .status.loading {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    .status.ready {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status.processing {
+      background: #cce5ff;
+      color: #0066cc;
+      border: 1px solid #99d6ff;
+    }
+    .canvas-section {
+      margin: 25px 0;
+      background: #f8f9fa;
+      padding: 25px;
+      border-radius: 12px;
+    }
+    .canvas-section h3 {
+      color: #495057;
+      margin-bottom: 15px;
+      font-size: 1.4em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .parameter-controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 10px;
+    }
+    .parameter-group {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #dee2e6;
+    }
+    .parameter-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #495057;
+    }
+    .parameter-group input[type="range"] {
+      width: 100%;
+      margin: 5px 0;
+    }
+    .parameter-group .value-display {
+      text-align: center;
+      font-size: 1.2em;
+      color: #667eea;
+      font-weight: bold;
+    }
+    .ocr-results {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin: 20px 0;
+      border: 1px solid #dee2e6;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .ocr-results h4 {
+      margin-top: 0;
+      color: #495057;
+    }
+    .text-item {
+      background: #f8f9fa;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 5px;
+      border-left: 3px solid #28a745;
+    }
+    .text-item.low-confidence {
+      border-left-color: #ffc107;
+    }
+    .text-item.very-low-confidence {
+      border-left-color: #dc3545;
+    }
+    .confidence {
+      font-size: 0.9em;
+      color: #6c757d;
+    }
+    .language-selector {
+      margin: 15px 0;
+      text-align: center;
+    }
+    .language-selector select {
+      padding: 8px 12px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      background: white;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 OCR連携手書き文字除去デモ</h1>
+    
+    <div class="method-info">
+      <h3>🎯 OCRベース除去の仕組み</h3>
+      <ul>
+        <li><strong>Step 1:</strong> Tesseract.jsで画像全体をOCR解析</li>
+        <li><strong>Step 2:</strong> 認識できた印刷文字の位置を特定</li>
+        <li><strong>Step 3:</strong> 認識できない領域（手書き文字）をマスクとして抽出</li>
+        <li><strong>Step 4:</strong> インペインティングで手書き部分のみを除去</li>
+        <li><strong>利点:</strong> 印刷文字を保護しながら手書き文字のみを的確に除去</li>
+      </ul>
+    </div>
+    
+    <div id="status" class="status loading">Tesseract.js を読み込み中...</div>
+    
+    <div class="progress-section" id="progressSection" style="display: none;">
+      <div class="progress-text" id="progressText">処理中...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+    
+    <div id="controls">
+      <input type="file" id="inputImage" accept="image/*" disabled />
+      <div class="language-selector">
+        <label for="languageSelect">OCR言語: </label>
+        <select id="languageSelect" disabled>
+          <option value="jpn+eng">日本語+英語</option>
+          <option value="eng">英語のみ</option>
+          <option value="jpn">日本語のみ</option>
+        </select>
+      </div>
+      <button id="ocrBtn" disabled>OCR解析実行</button>
+      <button id="processBtn" disabled>手書き文字除去</button>
+      <button id="saveBtn" disabled>結果を保存</button>
+    </div>
+
+    <div class="parameter-controls">
+      <div class="parameter-group">
+        <label for="confidenceThreshold">OCR信頼度閾値</label>
+        <input type="range" id="confidenceThreshold" min="10" max="90" value="50" disabled />
+        <div class="value-display" id="confidenceValue">50%</div>
+        <small>この値以下の認識結果を手書きとみなす</small>
+      </div>
+      
+      <div class="parameter-group">
+        <label for="expansionSize">マスク拡張サイズ</label>
+        <input type="range" id="expansionSize" min="1" max="20" value="5" disabled />
+        <div class="value-display" id="expansionValue">5px</div>
+        <small>手書き領域を少し広げて確実に除去</small>
+      </div>
+      
+      <div class="parameter-group">
+        <label for="inpaintRadius">修復範囲</label>
+        <input type="range" id="inpaintRadius" min="3" max="15" value="7" disabled />
+        <div class="value-display" id="inpaintValue">7px</div>
+        <small>インペインティングの修復範囲</small>
+      </div>
+      
+      <div class="parameter-group">
+        <label for="minTextSize">最小文字サイズ</label>
+        <input type="range" id="minTextSize" min="5" max="50" value="15" disabled />
+        <div class="value-display" id="minSizeValue">15px</div>
+        <small>この値以下のテキストは除去対象</small>
+      </div>
+    </div>
+
+    <div class="canvas-section">
+      <h3>📷 元画像</h3>
+      <canvas id="canvasInput"></canvas>
+    </div>
+
+    <div class="ocr-results" id="ocrResults" style="display: none;">
+      <h4>🔍 OCR解析結果</h4>
+      <div id="ocrText"></div>
+    </div>
+
+    <div class="canvas-section">
+      <h3>🎯 OCR検出結果（緑=印刷文字、赤=手書き文字）</h3>
+      <canvas id="ocrCanvas"></canvas>
+    </div>
+
+    <div class="canvas-section">
+      <h3>🖍️ 手書き文字マスク（除去対象）</h3>
+      <canvas id="maskCanvas"></canvas>
+    </div>
+
+    <div class="canvas-section">
+      <h3>✨ 最終結果（手書き文字除去後）</h3>
+      <canvas id="canvasOutput"></canvas>
+    </div>
+
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
+  <script src="script.js"></script>
+</body>
+</html>
