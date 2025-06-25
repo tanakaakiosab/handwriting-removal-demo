@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>手書き文字除去デモ</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
@@ -12,10 +12,14 @@
 <body>
   <h1>手書き文字除去デモ</h1>
   <div id="controls">
-    <input type="file" id="inputImage" accept="image/*">
+    <input type="file" id="inputImage" accept="image/*" />
     <button id="saveBtn">結果を保存</button>
   </div>
   <canvas id="canvasOutput"></canvas>
+  <div>
+    <p>【マスク画像（文字部分の抽出結果）】</p>
+    <canvas id="maskCanvas"></canvas>
+  </div>
 
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
   <script src="main.js"></script>
