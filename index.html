@@ -1,114 +1,706 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <title>OCR連携手書き文字除去アプリ</title>
+  <meta charset="utf-8">
+  <title>高精度手書き文字消去ツール</title>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
   <style>
-    /* スタイルは省略（前回の長いCSSをそのまま使用） */
-    /* 上記ファイルのスタイル全体をここに貼り付けてください */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 30px;
+      font-size: 2.2em;
+    }
+    .upload-section {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .file-input-wrapper {
+      position: relative;
+      display: inline-block;
+      cursor: pointer;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      color: white;
+      padding: 15px 30px;
+      border-radius: 25px;
+      transition: all 0.3s ease;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    .file-input-wrapper:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+    #fileInput {
+      position: absolute;
+      left: -9999px;
+    }
+    .controls {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin: 20px 0;
+      flex-wrap: wrap;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .control-group label {
+      font-weight: 500;
+      color: #555;
+      font-size: 14px;
+    }
+    input[type="range"] {
+      width: 120px;
+      -webkit-appearance: none;
+      height: 6px;
+      border-radius: 3px;
+      background: #ddd;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+    .canvas-container {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin: 30px 0;
+      flex-wrap: wrap;
+    }
+    .canvas-wrapper {
+      text-align: center;
+    }
+    .canvas-wrapper h3 {
+      margin-bottom: 15px;
+      color: #555;
+      font-size: 1.1em;
+    }
+    canvas {
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      max-width: 500px;
+      max-height: 400px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+    }
+    canvas:hover {
+      transform: scale(1.02);
+    }
+    .buttons {
+      text-align: center;
+      margin: 30px 0;
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 12px 25px;
+      border: none;
+      border-radius: 25px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-primary {
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      color: white;
+    }
+    .btn-success {
+      background: linear-gradient(45deg, #56ab2f, #a8e6cf);
+      color: white;
+    }
+    .btn-warning {
+      background: linear-gradient(45deg, #f093fb, #f5576c);
+      color: white;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    #status {
+      text-align: center;
+      padding: 15px;
+      border-radius: 10px;
+      margin: 20px 0;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+    .status-ready { background: #d4edda; color: #155724; }
+    .status-processing { background: #fff3cd; color: #856404; }
+    .status-success { background: #d1ecf1; color: #0c5460; }
+    .status-error { background: #f8d7da; color: #721c24; }
+    .progress-container {
+      width: 100%;
+      background: #f0f0f0;
+      border-radius: 10px;
+      margin: 15px 0;
+      overflow: hidden;
+      display: none;
+    }
+    .progress-bar {
+      height: 8px;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      border-radius: 10px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    .stats {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      margin-top: 20px;
+      display: none;
+    }
+    .stats h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .stat-item {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .stat-value {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #667eea;
+    }
+    .stat-label {
+      font-size: 0.9em;
+      color: #666;
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🤖 OCR連携手書き文字除去アプリ</h1>
-
-    <div class="method-info">
-      <h3>🎯 処理の流れ</h3>
-      <ul>
-        <li><strong>Step 1:</strong> 画像を選択</li>
-        <li><strong>Step 2:</strong> Tesseract.jsでOCR解析 → 印刷文字領域を特定</li>
-        <li><strong>Step 3:</strong> 手書き文字だけを抽出し、マスクを作成</li>
-        <li><strong>Step 4:</strong> OpenCV.jsでインペインティング処理</li>
-        <li><strong>Step 5:</strong> 結果を保存または確認</li>
-      </ul>
-    </div>
-
-    <div id="status" class="status loading">Tesseract.js を読み込み中...</div>
-    <div class="progress-section" id="progressSection" style="display: none;">
-      <div class="progress-text" id="progressText">処理中...</div>
-      <div class="progress-bar">
-        <div class="progress-fill" id="progressFill"></div>
+    <h1>🎯 高精度手書き文字消去ツール</h1>
+    
+    <div class="upload-section">
+      <div class="file-input-wrapper">
+        <input type="file" id="fileInput" accept="image/*">
+        📁 画像を選択
       </div>
     </div>
 
-    <div id="controls">
-      <input type="file" id="inputImage" accept="image/*" disabled />
-      <div class="language-selector">
-        <label for="languageSelect">OCR言語: </label>
-        <select id="languageSelect" disabled>
-          <option value="jpn+eng">日本語+英語</option>
-          <option value="eng">英語のみ</option>
-          <option value="jpn">日本語のみ</option>
-        </select>
+    <div class="controls">
+      <div class="control-group">
+        <label>感度調整</label>
+        <input type="range" id="sensitivitySlider" min="0" max="20" value="8" step="1">
+        <span id="sensitivityValue">8</span>
       </div>
-      <button id="ocrBtn" disabled>🔍 OCR解析実行</button>
-      <button id="processBtn" disabled>🖍️ 手書き除去</button>
-      <button id="saveBtn" disabled>💾 結果を保存</button>
-    </div>
-
-    <div class="parameter-controls">
-      <div class="parameter-group">
-        <label for="confidenceThreshold">OCR信頼度閾値</label>
-        <input type="range" id="confidenceThreshold" min="10" max="90" value="50" disabled />
-        <div class="value-display" id="confidenceValue">50%</div>
-        <small>この値以下の認識結果を手書きとみなす</small>
+      <div class="control-group">
+        <label>ノイズ除去</label>
+        <input type="range" id="noiseSlider" min="1" max="7" value="3" step="2">
+        <span id="noiseValue">3</span>
       </div>
-      <div class="parameter-group">
-        <label for="expansionSize">マスク拡張サイズ</label>
-        <input type="range" id="expansionSize" min="1" max="20" value="5" disabled />
-        <div class="value-display" id="expansionValue">5px</div>
-        <small>手書き領域を少し広げて確実に除去</small>
+      <div class="control-group">
+        <label>最小文字サイズ</label>
+        <input type="range" id="minSizeSlider" min="5" max="50" value="15" step="5">
+        <span id="minSizeValue">15</span>
       </div>
-      <div class="parameter-group">
-        <label for="inpaintRadius">修復範囲</label>
-        <input type="range" id="inpaintRadius" min="3" max="15" value="7" disabled />
-        <div class="value-display" id="inpaintValue">7px</div>
-        <small>インペインティングの修復範囲</small>
-      </div>
-      <div class="parameter-group">
-        <label for="minTextSize">最小文字サイズ</label>
-        <input type="range" id="minTextSize" min="5" max="50" value="15" disabled />
-        <div class="value-display" id="minSizeValue">15px</div>
-        <small>この値以下のテキストは除去対象</small>
+      <div class="control-group">
+        <label>最大文字サイズ</label>
+        <input type="range" id="maxSizeSlider" min="1000" max="50000" value="25000" step="1000">
+        <span id="maxSizeValue">25000</span>
       </div>
     </div>
 
-    <div class="canvas-section">
-      <h3>📷 元画像</h3>
-      <canvas id="canvasInput"></canvas>
+    <div class="buttons">
+      <button class="btn btn-primary" id="autoProcessBtn" disabled>🤖 自動最適化処理</button>
+      <button class="btn btn-warning" id="manualProcessBtn" disabled>⚙️ 手動設定で処理</button>
+      <button class="btn btn-success" id="resetBtn" disabled>🔄 リセット</button>
     </div>
 
-    <div class="ocr-results" id="ocrResults" style="display: none;">
-      <h4>🔍 OCR解析結果</h4>
-      <div id="ocrText"></div>
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar" id="progressBar"></div>
     </div>
 
-    <div class="canvas-section">
-      <h3>🎯 OCR検出結果（緑=印刷文字、赤=手書き文字）</h3>
-      <canvas id="ocrCanvas"></canvas>
+    <p id="status" class="status-ready">OpenCV.js を読み込み中...</p>
+
+    <div class="canvas-container">
+      <div class="canvas-wrapper">
+        <h3>元画像</h3>
+        <canvas id="originalCanvas"></canvas>
+      </div>
+      <div class="canvas-wrapper">
+        <h3>処理結果</h3>
+        <canvas id="resultCanvas"></canvas>
+      </div>
     </div>
 
-    <div class="canvas-section">
-      <h3>🖍️ 手書き文字マスク（除去対象）</h3>
-      <canvas id="maskCanvas"></canvas>
+    <div class="buttons">
+      <a id="downloadLink" href="#" download="cleaned-image.png" class="btn btn-success" style="display:none;">💾 処理画像をダウンロード</a>
     </div>
 
-    <div class="canvas-section">
-      <h3>✨ 最終結果（手書き文字除去後）</h3>
-      <canvas id="canvasOutput"></canvas>
+    <div class="stats" id="statsPanel">
+      <h3>📊 処理結果統計</h3>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="removedCount">-</div>
+          <div class="stat-label">削除した文字数</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="totalArea">-</div>
+          <div class="stat-label">削除面積 (px²)</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="optimalC">-</div>
+          <div class="stat-label">最適C値</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="processingTime">-</div>
+          <div class="stat-label">処理時間 (秒)</div>
+        </div>
+      </div>
     </div>
-
-    <canvas id="hiddenCanvas" style="display:none;"></canvas>
   </div>
 
-  <!-- 必須ライブラリ -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script> 
-  <script async src="https://docs.opencv.org/4.x/opencv.js"  onload="onOpenCvReady();"></script>
-
-  <!-- JavaScript処理 -->
   <script>
-    // ここに前回の `<script>` 内容をそのまま貼り付け
-    // （長いJavaScript部分も含めて）
+    let originalImage = null;
+    let isProcessing = false;
+
+    function onOpenCvReady() {
+      updateStatus("準備完了！画像を選択してください", "ready");
+      
+      // イベントリスナーの設定
+      document.getElementById("fileInput").addEventListener("change", handleFileSelect);
+      document.getElementById("autoProcessBtn").addEventListener("click", autoProcess);
+      document.getElementById("manualProcessBtn").addEventListener("click", manualProcess);
+      document.getElementById("resetBtn").addEventListener("click", resetAll);
+      
+      // スライダーの値表示更新
+      setupSliders();
+    }
+
+    function setupSliders() {
+      const sliders = [
+        { id: 'sensitivitySlider', valueId: 'sensitivityValue' },
+        { id: 'noiseSlider', valueId: 'noiseValue' },
+        { id: 'minSizeSlider', valueId: 'minSizeValue' },
+        { id: 'maxSizeSlider', valueId: 'maxSizeValue' }
+      ];
+
+      sliders.forEach(slider => {
+        const element = document.getElementById(slider.id);
+        document.getElementById(slider.valueId).textContent = element.value;
+        element.addEventListener('input', (e) => {
+          document.getElementById(slider.valueId).textContent = e.target.value;
+          if (originalImage && !isProcessing) {
+            debounceManualProcess();
+          }
+        });
+      });
+    }
+
+    let debounceTimer;
+    function debounceManualProcess() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(manualProcess, 500);
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = () => {
+        originalImage = img;
+        displayOriginalImage(img);
+        enableButtons();
+        updateStatus("画像が読み込まれました。処理方法を選択してください", "success");
+      };
+      img.src = URL.createObjectURL(file);
+    }
+
+    function displayOriginalImage(img) {
+      const canvas = document.getElementById("originalCanvas");
+      const maxSize = 500;
+      const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+      
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    }
+
+    function enableButtons() {
+      document.getElementById("autoProcessBtn").disabled = false;
+      document.getElementById("manualProcessBtn").disabled = false;
+      document.getElementById("resetBtn").disabled = false;
+    }
+
+    function updateStatus(message, type = "ready") {
+      const status = document.getElementById("status");
+      status.textContent = message;
+      status.className = `status-${type}`;
+    }
+
+    function showProgress(show = true) {
+      const container = document.getElementById("progressContainer");
+      container.style.display = show ? "block" : "none";
+      if (!show) {
+        document.getElementById("progressBar").style.width = "0%";
+      }
+    }
+
+    function updateProgress(percent) {
+      document.getElementById("progressBar").style.width = `${percent}%`;
+    }
+
+    async function autoProcess() {
+      if (isProcessing || !originalImage) return;
+      
+      isProcessing = true;
+      const startTime = Date.now();
+      
+      updateStatus("自動最適化処理中...", "processing");
+      showProgress(true);
+      
+      try {
+        const result = await findOptimalParameters(originalImage);
+        updateProgress(100);
+        
+        const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        updateStats(result.removedCount, result.totalArea, result.optimalC, processingTime);
+        
+        updateStatus(`処理完了！最適C値: ${result.optimalC}`, "success");
+        document.getElementById("statsPanel").style.display = "block";
+        
+      } catch (error) {
+        console.error("処理エラー:", error);
+        updateStatus("処理中にエラーが発生しました", "error");
+      } finally {
+        isProcessing = false;
+        showProgress(false);
+      }
+    }
+
+    async function findOptimalParameters(img) {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      
+      const srcBase = cv.imread(canvas);
+      const candidates = [];
+      
+      // より詳細な範囲でテスト
+      for (let c = 0; c <= 25; c++) {
+        updateProgress((c / 25) * 80);
+        
+        const result = analyzeWithC(srcBase, c);
+        candidates.push(result);
+        
+        // 少し待機してUIの更新を許可
+        if (c % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+      }
+      
+      // 最適なC値を選択（面積と数のバランスを考慮）
+      const best = candidates.reduce((a, b) => {
+        const scoreA = a.area + a.count * 50; // 文字数も重視
+        const scoreB = b.area + b.count * 50;
+        return scoreA > scoreB ? a : b;
+      });
+      
+      updateProgress(90);
+      
+      // 最適なパラメータで最終処理
+      const finalResult = processImage(srcBase, best.cVal);
+      
+      srcBase.delete();
+      return finalResult;
+    }
+
+    function analyzeWithC(srcBase, c) {
+      const src = srcBase.clone();
+      const gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      
+      // ヒストグラム均等化でコントラスト向上
+      cv.equalizeHist(gray, gray);
+      
+      const blur = new cv.Mat();
+      cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0);
+      
+      const binary = new cv.Mat();
+      cv.adaptiveThreshold(blur, binary, 255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, c);
+      
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
+      cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      
+      let totalArea = 0;
+      let validCount = 0;
+      
+      for (let i = 0; i < contours.size(); i++) {
+        const cnt = contours.get(i);
+        if (isValidHandwriting(cnt)) {
+          totalArea += cv.contourArea(cnt);
+          validCount++;
+        }
+        cnt.delete();
+      }
+      
+      // クリーンアップ
+      src.delete();
+      gray.delete();
+      blur.delete();
+      binary.delete();
+      contours.delete();
+      hierarchy.delete();
+      
+      return { cVal: c, area: totalArea, count: validCount };
+    }
+
+    function isValidHandwriting(contour) {
+      const area = cv.contourArea(contour);
+      const rect = cv.boundingRect(contour);
+      const aspect = rect.width / rect.height;
+      const perimeter = cv.arcLength(contour, true);
+      
+      // より厳密な条件
+      const minSize = parseInt(document.getElementById("minSizeSlider").value);
+      const maxSize = parseInt(document.getElementById("maxSizeSlider").value);
+      
+      // 円形度の計算（4πA/P²）
+      const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+      
+      // 充実度の計算
+      const hullArea = cv.contourArea(cv.convexHull(contour, new cv.Mat(), false, true));
+      const solidity = area / hullArea;
+      
+      return (
+        area >= minSize && area <= maxSize &&
+        aspect >= 0.1 && aspect <= 10.0 &&
+        circularity < 0.85 && // 完全な円は除外
+        solidity > 0.3 && // 凹みすぎる形状は除外
+        rect.width >= 3 && rect.height >= 3 // 最小サイズ
+      );
+    }
+
+    function manualProcess() {
+      if (isProcessing || !originalImage) return;
+      
+      isProcessing = true;
+      const startTime = Date.now();
+      
+      updateStatus("手動設定で処理中...", "processing");
+      
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = originalImage.width;
+        canvas.height = originalImage.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(originalImage, 0, 0);
+        
+        const src = cv.imread(canvas);
+        const cValue = parseInt(document.getElementById("sensitivitySlider").value);
+        const result = processImage(src, cValue);
+        
+        const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        updateStats(result.removedCount, result.totalArea, cValue, processingTime);
+        
+        updateStatus(`手動処理完了！C値: ${cValue}`, "success");
+        document.getElementById("statsPanel").style.display = "block";
+        
+        src.delete();
+        
+      } catch (error) {
+        console.error("処理エラー:", error);
+        updateStatus("処理中にエラーが発生しました", "error");
+      } finally {
+        isProcessing = false;
+      }
+    }
+
+    function processImage(src, cValue) {
+      const gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.equalizeHist(gray, gray);
+      
+      const noiseKernel = parseInt(document.getElementById("noiseSlider").value);
+      const blur = new cv.Mat();
+      cv.GaussianBlur(gray, blur, new cv.Size(noiseKernel, noiseKernel), 0);
+      
+      const binary = new cv.Mat();
+      cv.adaptiveThreshold(blur, binary, 255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, cValue);
+      
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
+      cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      
+      // 背景色の推定（複数エリアからサンプリング）
+      const bgColor = estimateBackgroundColor(src);
+      
+      let removedCount = 0;
+      let totalArea = 0;
+      
+      for (let i = 0; i < contours.size(); i++) {
+        const cnt = contours.get(i);
+        if (isValidHandwriting(cnt)) {
+          const area = cv.contourArea(cnt);
+          totalArea += area;
+          removedCount++;
+          
+          // より自然な塗りつぶしのため、膨張処理
+          const mask = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
+          cv.drawContours(mask, contours, i, new cv.Scalar(255), -1);
+          
+          // 軽微な膨張で境界を滑らかに
+          const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+          cv.dilate(mask, mask, kernel);
+          
+          const color = new cv.Scalar(bgColor[0], bgColor[1], bgColor[2], 255);
+          src.setTo(color, mask);
+          
+          mask.delete();
+          kernel.delete();
+        }
+        cnt.delete();
+      }
+      
+      displayResult(src);
+      
+      // クリーンアップ
+      gray.delete();
+      blur.delete();
+      binary.delete();
+      contours.delete();
+      hierarchy.delete();
+      
+      return { removedCount, totalArea, optimalC: cValue };
+    }
+
+    function estimateBackgroundColor(src) {
+      // 四隅から背景色をサンプリング
+      const samples = [
+        src.roi(new cv.Rect(0, 0, 20, 20)),
+        src.roi(new cv.Rect(src.cols - 20, 0, 20, 20)),
+        src.roi(new cv.Rect(0, src.rows - 20, 20, 20)),
+        src.roi(new cv.Rect(src.cols - 20, src.rows - 20, 20, 20))
+      ];
+      
+      let totalR = 0, totalG = 0, totalB = 0;
+      for (const sample of samples) {
+        const mean = cv.mean(sample);
+        totalR += mean[0];
+        totalG += mean[1];
+        totalB += mean[2];
+        sample.delete();
+      }
+      
+      return [totalR / 4, totalG / 4, totalB / 4];
+    }
+
+    function displayResult(processedMat) {
+      const canvas = document.getElementById("resultCanvas");
+      const originalCanvas = document.getElementById("originalCanvas");
+      
+      canvas.width = originalCanvas.width;
+      canvas.height = originalCanvas.height;
+      
+      // 結果を表示用にリサイズ
+      const resized = new cv.Mat();
+      cv.resize(processedMat, resized, new cv.Size(canvas.width, canvas.height));
+      cv.imshow("resultCanvas", resized);
+      
+      // ダウンロードリンクを設定（元解像度）
+      const fullCanvas = document.createElement("canvas");
+      fullCanvas.width = processedMat.cols;
+      fullCanvas.height = processedMat.rows;
+      cv.imshow(fullCanvas, processedMat);
+      
+      const link = document.getElementById("downloadLink");
+      link.href = fullCanvas.toDataURL("image/png");
+      link.style.display = "inline-block";
+      
+      resized.delete();
+    }
+
+    function updateStats(removedCount, totalArea, optimalC, processingTime) {
+      document.getElementById("removedCount").textContent = removedCount;
+      document.getElementById("totalArea").textContent = Math.round(totalArea).toLocaleString();
+      document.getElementById("optimalC").textContent = optimalC;
+      document.getElementById("processingTime").textContent = processingTime;
+    }
+
+    function resetAll() {
+      // キャンバスをクリア
+      const canvases = ["originalCanvas", "resultCanvas"];
+      canvases.forEach(id => {
+        const canvas = document.getElementById(id);
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = canvas.height = 0;
+      });
+      
+      // 状態をリセット
+      originalImage = null;
+      isProcessing = false;
+      
+      // UIをリセット
+      document.getElementById("fileInput").value = "";
+      document.getElementById("downloadLink").style.display = "none";
+      document.getElementById("statsPanel").style.display = "none";
+      
+      // ボタンを無効化
+      document.getElementById("autoProcessBtn").disabled = true;
+      document.getElementById("manualProcessBtn").disabled = true;
+      document.getElementById("resetBtn").disabled = true;
+      
+      updateStatus("リセット完了。新しい画像を選択してください", "ready");
+    }
   </script>
 </body>
 </html>
